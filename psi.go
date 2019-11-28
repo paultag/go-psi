@@ -1,3 +1,23 @@
+// {{{ Copyright (c) Paul R. Tagliamonte <paultag@gmail.com>, 2019
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE. }}}
+
 package psi
 
 import (
@@ -9,12 +29,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Resource to monitor PSI backpressure on.
+// Resource to monitor PSI backpressure on. This is currently one of
+// "cpu", "io" or "memory", as defined by ResourceCPU, ResourceIO and
+// ResourceMemory, respectively.
 type Resource string
 
 var (
-	ResourceCPU    Resource = "cpu"
-	ResourceIO     Resource = "io"
+	// ResourceCPU represents the CPU when monitoring
+	ResourceCPU Resource = "cpu"
+
+	// ResourceIO represents IO when monitoring
+	ResourceIO Resource = "io"
+
+	// ResourceMemory represents memory when monitoring
 	ResourceMemory Resource = "memory"
 )
 
@@ -22,10 +49,16 @@ var (
 type StallType string
 
 var (
+	// StallTypeFull signifies all tasks need to have stalled for at least the
+	// stall window duration during the window duration
 	StallTypeFull StallType = "full"
+
+	// StallTypeSome signifies at least one task must have stalled for at least
+	// the stall window duration during the window duration.
 	StallTypeSome StallType = "some"
 )
 
+// Config sets the parameters used to monitor backpressure on a resource.
 type Config struct {
 	Resource            Resource
 	Type                StallType
@@ -33,6 +66,15 @@ type Config struct {
 	WindowDuration      time.Duration
 }
 
+// Check that the values contained in the Config are valid for use to monitor
+// Backpressure.
+//
+// In particular, this will check the range on provided WindowDuration and
+// StallWindowDuration minimum and maximums.
+//
+// If you're programatically generating the struct, be sure to run `Check` on
+// the values before using them to catch errors in a way that's a bit easier to
+// reason about.
 func (c Config) Check() error {
 	if c.WindowDuration < time.Millisecond*500 {
 		return fmt.Errorf("Minmum WindowDuration is 500ms")
@@ -51,8 +93,10 @@ func (c Config) Check() error {
 	return nil
 }
 
+// Explain will return a human readable string explaining what the query will
+// be triggering on.
 func (c Config) Explain() string {
-	var name string = "UNKNOWN"
+	name := "UNKNOWN"
 	switch c.Type {
 	case StallTypeSome:
 		name = "at least one"
@@ -69,13 +113,19 @@ func (c Config) Explain() string {
 	)
 }
 
-//
-//
-//
-func Monitor(
-	config Config,
-	cb func() error,
-) error {
+// MonitorCallback allows Monitor to invoke a callback when the backpressure
+// exceeds the provided thresholds.
+type MonitorCallback func() error
+
+var (
+	// ErrStopMonitoring allows `MonitorCallback`s to tell Monitor to bail
+	// and stop paying attention.
+	ErrStopMonitoring error = fmt.Errorf("psi: stop it")
+)
+
+// Monitor will invoke the provided Callback every time the backpressure
+// thresholds exceed the provided configuration.
+func Monitor(config Config, cb MonitorCallback) error {
 	if err := config.Check(); err != nil {
 		return err
 	}
@@ -110,7 +160,13 @@ func Monitor(
 			return err
 		}
 		if err := cb(); err != nil {
+			if err == ErrStopMonitoring {
+				break
+			}
 			return err
 		}
 	}
+	return nil
 }
+
+// vim: foldmethod=marker

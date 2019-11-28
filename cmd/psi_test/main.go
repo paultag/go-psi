@@ -12,7 +12,7 @@ func main() {
 		Resource:            psi.ResourceCPU,
 		Type:                psi.StallTypeSome,
 		StallWindowDuration: time.Second / 10,
-		WindowDuration:      time.Second / 2,
+		WindowDuration:      time.Second,
 	}, func() error {
 		fmt.Printf("foo\n")
 		return nil
